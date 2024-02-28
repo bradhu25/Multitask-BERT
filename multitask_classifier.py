@@ -72,8 +72,10 @@ class MultitaskBERT(nn.Module):
                 param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
-        raise NotImplementedError
-
+        self.ln_sentiment = nn.Linear(config.hidden_size, 5)
+        self.ln_paraphrase = nn.Linear(config.hidden_size, 1)
+        self.ln_similarity = nn.Linear(config.hidden_size, 1)
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
@@ -82,7 +84,9 @@ class MultitaskBERT(nn.Module):
         # When thinking of improvements, you can later try modifying this
         # (e.g., by adding other layers).
         ### TODO
-        raise NotImplementedError
+        # change to using contextual word embeddings of particular word pieces later
+        out = self.bert.forward(input_ids, attention_mask)
+        return self.dropout(out["pooler_output"])  
 
 
     def predict_sentiment(self, input_ids, attention_mask):
@@ -92,7 +96,9 @@ class MultitaskBERT(nn.Module):
         Thus, your output should contain 5 logits for each sentence.
         '''
         ### TODO
-        raise NotImplementedError
+        out = self.forward(input_ids, attention_mask)
+        out = self.ln_sentiment(out) # add more linear/nonnlinear layers (relu)
+        return out
 
 
     def predict_paraphrase(self,
@@ -103,7 +109,10 @@ class MultitaskBERT(nn.Module):
         during evaluation.
         '''
         ### TODO
-        raise NotImplementedError
+        out1 = self.forward(input_ids_1, attention_mask_1)
+        out2 = self.forward(input_ids_2, attention_mask_2)
+        out = self.ln_paraphrase(out1 + out2) # do something smarter than summing the two
+        return out
 
 
     def predict_similarity(self,
@@ -113,7 +122,10 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit).
         '''
         ### TODO
-        raise NotImplementedError
+        out1 = self.forward(input_ids_1, attention_mask_1)
+        out2 = self.forward(input_ids_2, attention_mask_2)
+        out = self.ln_similarity(out1 + out2) # do something smarter than summing the two
+        return out
 
 
 
