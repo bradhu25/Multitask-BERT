@@ -83,6 +83,7 @@ class MultitaskBERT(nn.Module):
         # Here, you can start by just returning the embeddings straight from BERT.
         # When thinking of improvements, you can later try modifying this
         # (e.g., by adding other layers).
+
         ### TODO
         # change to using contextual word embeddings of particular word pieces later
         outputs = self.bert.forward(input_ids, attention_mask)
@@ -128,8 +129,6 @@ class MultitaskBERT(nn.Module):
         return outputs
 
 
-
-
 def save_model(model, optimizer, args, config, filepath):
     save_info = {
         'model': model.state_dict(),
@@ -143,7 +142,6 @@ def save_model(model, optimizer, args, config, filepath):
 
     torch.save(save_info, filepath)
     print(f"save the model to {filepath}")
-
 
 
 def train_multitask(args):
@@ -199,6 +197,8 @@ def train_multitask(args):
     model = MultitaskBERT(config)
     model = model.to(device)
 
+    # maybe alternate loss func?
+    
     sst = {'task_name': "sentiment", 'dataloader': sst_train_dataloader, 'predictor': model.predict_sentiment, 'loss_func': F.cross_entropy}
     para = {'task_name': "paraphrase", 'dataloader': para_train_dataloader, 'predictor': model.predict_paraphrase, 'loss_func': F.binary_cross_entropy_with_logits}
     sts = {'task_name': "similarity", 'dataloader': sts_train_dataloader, 'predictor': model.predict_similarity, 'loss_func': F.binary_cross_entropy_with_logits}
