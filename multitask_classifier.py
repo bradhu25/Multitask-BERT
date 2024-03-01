@@ -201,7 +201,7 @@ def train_multitask(args):
     
     sst = {'task_name': "sentiment", 'dataloader': sst_train_dataloader, 'predictor': model.predict_sentiment, 'loss_func': F.cross_entropy}
     para = {'task_name': "paraphrase", 'dataloader': para_train_dataloader, 'predictor': model.predict_paraphrase, 'loss_func': F.binary_cross_entropy_with_logits}
-    sts = {'task_name': "similarity", 'dataloader': sts_train_dataloader, 'predictor': model.predict_similarity, 'loss_func': F.binary_cross_entropy_with_logits}
+    sts = {'task_name': "similarity", 'dataloader': sts_train_dataloader, 'predictor': model.predict_similarity, 'loss_func': F.mse_loss}
     tasks = [sst, para, sts]
 
     lr = args.lr
@@ -243,7 +243,7 @@ def train_multitask(args):
 
                     optimizer.zero_grad()
                     logits = task["predictor"](*predictor_args)
-                    loss = (task["loss_func"](logits.view(-1), b_labels, reduction='sum')) / args.batch_size
+                    loss = (task["loss_func"](logits.view(-1), b_labels.float(), reduction='sum')) / args.batch_size
 
                 loss.backward()
                 optimizer.step()
