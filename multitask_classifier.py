@@ -209,58 +209,61 @@ def train_multitask(args):
     best_dev_acc = 0
 
     # Run for the specified number of epochs.
-    for epoch in range(args.epochs):
-        model.train()
-        train_loss = 0
-        num_batches = 0
-        for task in tasks:
-            for batch in tqdm(task['dataloader'], desc=f'train-{epoch}', disable=TQDM_DISABLE):
-                if task['task_name'] == "sentiment":
-                    b_ids, b_mask, b_labels = (batch['token_ids'],
-                                            batch['attention_mask'], batch['labels'])
+    with open(args.logpath, 'a') as file:
+        for epoch in range(args.epochs):
+            model.train()
+            train_loss = 0
+            num_batches = 0
+            for task in tasks:
+                for batch in tqdm(task['dataloader'], desc=f'train-{epoch}', disable=TQDM_DISABLE):
+                    if task['task_name'] == "sentiment":
+                        b_ids, b_mask, b_labels = (batch['token_ids'],
+                                                batch['attention_mask'], batch['labels'])
 
-                    b_ids = b_ids.to(device)
-                    b_mask = b_mask.to(device)
-                    b_labels = b_labels.to(device)
-                    predictor_args = (b_ids, b_mask)
-                    
-                    optimizer.zero_grad()
-                    logits = task["predictor"](*predictor_args)
-                    loss = (task["loss_func"](logits, b_labels, reduction='sum')) / args.batch_size
+                        b_ids = b_ids.to(device)
+                        b_mask = b_mask.to(device)
+                        b_labels = b_labels.to(device)
+                        predictor_args = (b_ids, b_mask)
+                        
+                        optimizer.zero_grad()
+                        logits = task["predictor"](*predictor_args)
+                        loss = (task["loss_func"](logits, b_labels, reduction='sum')) / args.batch_size
 
-                else:
-                    b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (
-                                                        batch['token_ids_1'],batch['attention_mask_1'], 
-                                                        batch['token_ids_2'],batch['attention_mask_2'],
-                                                        batch['labels'])
-                    b_ids_1 = b_ids_1.to(device)
-                    b_mask_1 = b_mask_1.to(device)
-                    b_ids_2 = b_ids_2.to(device)
-                    b_mask_2 = b_mask_2.to(device)
-                    b_labels = b_labels.to(device)
+                    else:
+                        b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (
+                                                            batch['token_ids_1'],batch['attention_mask_1'], 
+                                                            batch['token_ids_2'],batch['attention_mask_2'],
+                                                            batch['labels'])
+                        b_ids_1 = b_ids_1.to(device)
+                        b_mask_1 = b_mask_1.to(device)
+                        b_ids_2 = b_ids_2.to(device)
+                        b_mask_2 = b_mask_2.to(device)
+                        b_labels = b_labels.to(device)
 
-                    predictor_args = (b_ids_1, b_mask_1, b_ids_2, b_mask_2)
+                        predictor_args = (b_ids_1, b_mask_1, b_ids_2, b_mask_2)
 
-                    optimizer.zero_grad()
-                    logits = task["predictor"](*predictor_args)
-                    loss = (task["loss_func"](logits.view(-1), b_labels.float(), reduction='sum')) / args.batch_size
+                        optimizer.zero_grad()
+                        logits = task["predictor"](*predictor_args)
+                        loss = (task["loss_func"](logits.view(-1), b_labels.float(), reduction='sum')) / args.batch_size
 
-                loss.backward()
-                optimizer.step()
+                    loss.backward()
+                    optimizer.step()
 
-                train_loss += loss.item()
-                num_batches += 1
+                    train_loss += loss.item()
+                    num_batches += 1
 
-        train_loss = train_loss / (num_batches)
+            train_loss = train_loss / (num_batches)
 
-        train_acc, train_f1, *_ = model_eval_multitask(sst_train_dataloader, para_train_dataloader, sts_train_dataloader, model, device)
-        dev_acc, dev_f1, *_ = model_eval_multitask(sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device)
-        
-        if dev_acc > best_dev_acc:
-            best_dev_acc = dev_acc
-            save_model(model, optimizer, args, config, args.filepath)
+            train_acc, train_f1, *_ = model_eval_multitask(sst_train_dataloader, para_train_dataloader, sts_train_dataloader, model, device)
+            dev_acc, dev_f1, *_ = model_eval_multitask(sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device)
+            
+            if dev_acc > best_dev_acc:
+                best_dev_acc = dev_acc
+                save_model(model, optimizer, args, config, args.filepath)
 
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
+            output_message = f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}"
+            print(output_message)
+            file.write(output_message + "\n")
 
 
 def test_multitask(args):
@@ -392,6 +395,7 @@ def get_args():
 if __name__ == "__main__":
     args = get_args()
     args.filepath = f'{args.option}-{args.epochs}-{args.lr}-multitask.pt' # Save path.
+    args.logpath = f'{args.option}-{args.epochs}-{args.lr}-multitask-log.txt' # path for saving training epochs
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
     test_multitask(args)
