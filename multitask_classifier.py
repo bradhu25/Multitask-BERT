@@ -416,7 +416,7 @@ def get_args():
 
 if __name__ == "__main__":
     args = get_args()
-    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-multitask.pt' # Save path.
+    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-scheduled-multitask.pt' # Save path.
     args.logpath = f'{args.option}-{args.epochs}-{args.lr}-scheduled-multitask-log.txt' # path for saving training epochs
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
