@@ -18,11 +18,12 @@ from types import SimpleNamespace
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 
 from bert import BertModel
 from optimizer import AdamW
 from tqdm import tqdm
+from itertools import cycle
 
 from datasets import (
     SentenceClassificationDataset,
@@ -185,7 +186,6 @@ def train_multitask(args):
                                       collate_fn=sts_train_data.collate_fn)
     sts_dev_dataloader = DataLoader(sts_dev_data, shuffle=False, batch_size=args.batch_size,
                                     collate_fn=sts_dev_data.collate_fn)
-
     # Init model.
     config = {'hidden_dropout_prob': args.hidden_dropout_prob,
               'num_labels': num_labels,
@@ -197,17 +197,19 @@ def train_multitask(args):
 
     model = MultitaskBERT(config)
     model = model.to(device)
-
-    # maybe alternate loss func?
     
-    sst = {'task_name': "sentiment", 'dataloader': sst_train_dataloader, 'predictor': model.predict_sentiment, 'loss_func': F.cross_entropy}
-    para = {'task_name': "paraphrase", 'dataloader': para_train_dataloader, 'predictor': model.predict_paraphrase, 'loss_func': F.binary_cross_entropy_with_logits}
-    sts = {'task_name': "similarity", 'dataloader': sts_train_dataloader, 'predictor': model.predict_similarity, 'loss_func': F.mse_loss}
+    sst = {'task_name': "sentiment", 'dataloader': cycle(iter(sst_train_dataloader)), 'predictor': model.predict_sentiment, 'loss_func': F.cross_entropy, 'len': len(sst_train_data)}
+    para = {'task_name': "paraphrase", 'dataloader': cycle(iter(para_train_dataloader)), 'predictor': model.predict_paraphrase, 'loss_func': F.binary_cross_entropy_with_logits, 'len': len(para_train_data)}
+    sts = {'task_name': "similarity", 'dataloader': cycle(iter(sts_train_dataloader)), 'predictor': model.predict_similarity, 'loss_func': F.mse_loss, 'len': len(sts_train_data)}
     tasks = [sst, para, sts]
 
     lr = args.lr
     optimizer = AdamW(model.parameters(), lr=lr)
     best_dev_acc = 0
+
+    '''
+    batch_size * (sst/(total)) ^ alpha
+    '''
 
     # Run for the specified number of epochs.
     with open(args.logpath, 'a') as file:
@@ -217,43 +219,53 @@ def train_multitask(args):
             model.train()
             train_loss = 0
             num_batches = 0
-            for task in tasks:
-                for batch in tqdm(task['dataloader'], desc=f'train-{epoch}', disable=TQDM_DISABLE):
-                    if task['task_name'] == "sentiment":
-                        b_ids, b_mask, b_labels = (batch['token_ids'],
-                                                batch['attention_mask'], batch['labels'])
+            # for task in tasks:
+            #     for batch in tqdm(task['dataloader'], desc=f'train-{epoch}', disable=TQDM_DISABLE):
+            alpha = 1 - (0.8 * epoch/(args.epochs-1))
+            probs = []
+            for t in tasks:
+                probs.append(t['len'] ** alpha)
+            probs = probs / np.sum(probs)
+            for step in range(args.steps_per_epoch):
+                if (step+1)%1000 == 0:
+                    print("Step " + str(step) + " of Epoch " + str(epoch))
+                task = np.random.choice(a=tasks, p=probs)
+                batch = next(task['dataloader'])
+                if task['task_name'] == "sentiment":
+                    b_ids, b_mask, b_labels = (batch['token_ids'],
+                                            batch['attention_mask'], batch['labels'])
 
-                        b_ids = b_ids.to(device)
-                        b_mask = b_mask.to(device)
-                        b_labels = b_labels.to(device)
-                        predictor_args = (b_ids, b_mask)
-                        
-                        optimizer.zero_grad()
-                        logits = task["predictor"](*predictor_args)
-                        loss = (task["loss_func"](logits, b_labels, reduction='sum')) / args.batch_size
+                    b_ids = b_ids.to(device)
+                    b_mask = b_mask.to(device)
+                    b_labels = b_labels.to(device)
+                    predictor_args = (b_ids, b_mask)
+                    
+                    optimizer.zero_grad()
+                    logits = task["predictor"](*predictor_args)
+                    loss = (task["loss_func"](logits, b_labels, reduction='sum')) / args.batch_size
 
-                    else:
-                        b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (
-                                                            batch['token_ids_1'],batch['attention_mask_1'], 
-                                                            batch['token_ids_2'],batch['attention_mask_2'],
-                                                            batch['labels'])
-                        b_ids_1 = b_ids_1.to(device)
-                        b_mask_1 = b_mask_1.to(device)
-                        b_ids_2 = b_ids_2.to(device)
-                        b_mask_2 = b_mask_2.to(device)
-                        b_labels = b_labels.to(device)
+                else:
+                    b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels = (
+                                                        batch['token_ids_1'],batch['attention_mask_1'], 
+                                                        batch['token_ids_2'],batch['attention_mask_2'],
+                                                        batch['labels'])
+                    b_ids_1 = b_ids_1.to(device)
+                    b_mask_1 = b_mask_1.to(device)
+                    b_ids_2 = b_ids_2.to(device)
+                    b_mask_2 = b_mask_2.to(device)
+                    b_labels = b_labels.to(device)
 
-                        predictor_args = (b_ids_1, b_mask_1, b_ids_2, b_mask_2)
+                    predictor_args = (b_ids_1, b_mask_1, b_ids_2, b_mask_2)
 
-                        optimizer.zero_grad()
-                        logits = task["predictor"](*predictor_args)
-                        loss = (task["loss_func"](logits.view(-1), b_labels.float(), reduction='sum')) / args.batch_size
+                    optimizer.zero_grad()
+                    logits = task["predictor"](*predictor_args)
+                    loss = (task["loss_func"](logits.view(-1), b_labels.float(), reduction='sum')) / args.batch_size
 
-                    loss.backward()
-                    optimizer.step()
+                loss.backward()
+                optimizer.step()
 
-                    train_loss += loss.item()
-                    num_batches += 1
+                train_loss += loss.item()
+                num_batches += 1
 
             train_loss = train_loss / (num_batches)
 
@@ -393,7 +405,8 @@ def get_args():
     parser.add_argument("--sts_dev_out", type=str, default="predictions/sts-dev-output.csv")
     parser.add_argument("--sts_test_out", type=str, default="predictions/sts-test-output.csv")
 
-    parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
+    parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=16)
+    parser.add_argument("--steps_per_epoch", type=int, default=3000)
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
 
@@ -404,7 +417,7 @@ def get_args():
 if __name__ == "__main__":
     args = get_args()
     args.filepath = f'{args.option}-{args.epochs}-{args.lr}-multitask.pt' # Save path.
-    args.logpath = f'{args.option}-{args.epochs}-{args.lr}-multitask-log.txt' # path for saving training epochs
+    args.logpath = f'{args.option}-{args.epochs}-{args.lr}-scheduled-multitask-log.txt' # path for saving training epochs
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
     test_multitask(args)
