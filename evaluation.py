@@ -67,7 +67,7 @@ def model_eval_multitask(sentiment_dataloader,
             if use_pals:
                 bert_output = model.bert(b_ids, attention_mask=b_mask)
                 pooled_output = bert_output["pooler_output"]
-            logits = model.predict_sentiment(b_ids, b_mask, pooled_output)
+            logits = model.predict_sentiment(b_ids, b_mask, pooled_output=pooled_output)
             y_hat = logits.argmax(dim=-1).flatten().cpu().numpy()
             b_labels = b_labels.flatten().cpu().numpy()
 
@@ -97,7 +97,7 @@ def model_eval_multitask(sentiment_dataloader,
                 pooled_output_1 = model.bert(b_ids1, attention_mask=b_mask1)["pooler_output"]
                 pooled_output_2 = model.bert(b_ids2, attention_mask=b_mask2)["pooler_output"]
 
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2, pooled_output_1, pooled_output_2)
+            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
             y_hat = logits.sigmoid().round().flatten().cpu().numpy()
             b_labels = b_labels.flatten().cpu().numpy()
 
