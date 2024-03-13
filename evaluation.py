@@ -50,7 +50,7 @@ def model_eval_sst(dataloader, model, device):
 def model_eval_multitask(sentiment_dataloader,
                          paraphrase_dataloader,
                          sts_dataloader,
-                         model, device):
+                         model, device, use_pals=False):
     model.eval()  # Switch to eval model, will turn off randomness like dropout.
 
     with torch.no_grad():
@@ -64,7 +64,10 @@ def model_eval_multitask(sentiment_dataloader,
             b_ids = b_ids.to(device)
             b_mask = b_mask.to(device)
 
-            logits = model.predict_sentiment(b_ids, b_mask)
+            if use_pals:
+                bert_output = model.bert(b_ids, attention_mask=b_mask)
+                pooled_output = bert_output["pooler_output"]
+            logits = model.predict_sentiment(b_ids, b_mask, pooled_output=pooled_output)
             y_hat = logits.argmax(dim=-1).flatten().cpu().numpy()
             b_labels = b_labels.flatten().cpu().numpy()
 
@@ -90,7 +93,11 @@ def model_eval_multitask(sentiment_dataloader,
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
 
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
+            if use_pals:
+                pooled_output_1 = model.bert(b_ids1, attention_mask=b_mask1)["pooler_output"]
+                pooled_output_2 = model.bert(b_ids2, attention_mask=b_mask2)["pooler_output"]
+
+            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
             y_hat = logits.sigmoid().round().flatten().cpu().numpy()
             b_labels = b_labels.flatten().cpu().numpy()
 
@@ -116,7 +123,11 @@ def model_eval_multitask(sentiment_dataloader,
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
 
-            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
+            if use_pals:
+                pooled_output_1 = model.bert(b_ids1, attention_mask=b_mask1)["pooler_output"]
+                pooled_output_2 = model.bert(b_ids2, attention_mask=b_mask2)["pooler_output"]
+
+            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
             y_hat = logits.flatten().cpu().numpy()
             b_labels = b_labels.flatten().cpu().numpy()
 

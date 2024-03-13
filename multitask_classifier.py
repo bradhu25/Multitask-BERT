@@ -304,8 +304,9 @@ def train_multitask(args):
                     optimizer.zero_grad()
 
                     # Get the bert representation ONCE
-                    bert_output = model.bert(b_ids, attention_mask=b_mask)
-                    pooled_output = bert_output["pooler_output"]
+                    if args.use_pals:
+                        bert_output = model.bert(b_ids, attention_mask=b_mask)
+                        pooled_output = bert_output["pooler_output"]
 
                     logits = model.predict_sentiment(b_ids, b_mask, pooled_output=pooled_output)
                     loss = F.cross_entropy(logits, b_labels, reduction='sum') / args.batch_size
@@ -314,9 +315,10 @@ def train_multitask(args):
                     input_ids_1, attention_mask_1 = batch['token_ids_1'].to(device), batch['attention_mask_1'].to(device)
                     input_ids_2, attention_mask_2 = batch['token_ids_2'].to(device), batch['attention_mask_2'].to(device)
                     b_labels = batch['labels'].to(device)
-
-                    pooled_output_1 = model.bert(input_ids_1, attention_mask=attention_mask_1)["pooler_output"]
-                    pooled_output_2 = model.bert(input_ids_2, attention_mask=attention_mask_2)["pooler_output"]
+                    
+                    if args.use_pals:
+                        pooled_output_1 = model.bert(input_ids_1, attention_mask=attention_mask_1)["pooler_output"]
+                        pooled_output_2 = model.bert(input_ids_2, attention_mask=attention_mask_2)["pooler_output"]
 
                     if task_name == "paraphrase":
                         logits = model.predict_paraphrase(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
@@ -333,8 +335,8 @@ def train_multitask(args):
 
             train_loss = train_loss / (num_batches)
 
-            sent_train_acc, sst_train_y_pred, sst_train_sent_ids, para_train_acc, para_train_y_pred, para_train_sent_ids, sts_train_corr, sts_train_y_pred, sts_train_sent_ids = model_eval_multitask(sst_train_dataloader, para_train_dataloader, sts_train_dataloader, model, device)
-            sent_dev_acc, sst_dev_y_pred, sst_dev_sent_ids, para_dev_acc, para_dev_y_pred, para_dev_sent_ids,sts_dev_corr, sts_dev_y_pred, sts_dev_sent_ids = model_eval_multitask(sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device)
+            sent_train_acc, sst_train_y_pred, sst_train_sent_ids, para_train_acc, para_train_y_pred, para_train_sent_ids, sts_train_corr, sts_train_y_pred, sts_train_sent_ids = model_eval_multitask(sst_train_dataloader, para_train_dataloader, sts_train_dataloader, model, device, args.use_pals)
+            sent_dev_acc, sst_dev_y_pred, sst_dev_sent_ids, para_dev_acc, para_dev_y_pred, para_dev_sent_ids,sts_dev_corr, sts_dev_y_pred, sts_dev_sent_ids = model_eval_multitask(sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device, args.use_pals)
 
             if sent_dev_acc > best_dev_acc:
                 best_dev_acc = sent_dev_acc
