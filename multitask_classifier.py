@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader
 from bert import BertModel
 from optimizer import AdamW
 from tqdm import tqdm
+from itertools import cycle
 
 from datasets import (
     SentenceClassificationDataset,
@@ -33,7 +34,6 @@ from datasets import (
 )
 from evaluation import model_eval_sst, model_eval_multitask, model_eval_test_multitask
 from datetime import datetime
-from multitask_scheduling import mix_dataloaders
 
 TQDM_DISABLE=False
 
@@ -51,12 +51,14 @@ class MultitaskBERTConfig(SimpleNamespace):
     def __init__(self, 
                  hidden_size=768, 
                  hidden_dropout_prob=0.1, 
-                 hidden_size_aug=204, 
+                 hidden_size_aug=204,
+                 num_attention_heads = 12,
                  use_pals=False, 
                  **kwargs):
         super().__init__(hidden_size=hidden_size, 
                          hidden_dropout_prob=hidden_dropout_prob, 
                          hidden_size_aug=hidden_size_aug, 
+                         num_attention_heads=num_attention_heads,
                          use_pals=use_pals, 
                          **kwargs)
 
@@ -103,7 +105,7 @@ class MultitaskBERT(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
         # PALs
-        if self.config.pals:
+        if self.config.use_pals:
             # Initialize PALs for each task
             self.pal_layers = nn.ModuleDict({
                 "sentiment": ProjectedAttentionLayer(config),
@@ -268,6 +270,8 @@ def train_multitask(args):
     # para = {'task_name': "paraphrase", 'dataloader': para_train_dataloader, 'predictor': model.predict_paraphrase, 'loss_func': F.binary_cross_entropy_with_logits}
     # sts = {'task_name': "similarity", 'dataloader': sts_train_dataloader, 'predictor': model.predict_similarity, 'loss_func': F.mse_loss}
     # tasks = [sst, para, sts]
+    tasks = [cycle(iter(sst_train_dataloader)), cycle(iter(para_train_dataloader)), cycle(iter(sts_train_dataloader))]
+    sizes = [len(sst_train_data), len(para_train_data), len(sts_train_data)]
 
     lr = args.lr
     optimizer = AdamW(model.parameters(), lr=lr)
@@ -284,19 +288,14 @@ def train_multitask(args):
             #     for batch in tqdm(task['dataloader'], desc=f'train-{epoch}', disable=TQDM_DISABLE):
             alpha = 1 - (0.8 * epoch/(args.epochs-1))
             probs = []
-            for t in tasks:
-                probs.append(t['len'] ** alpha)
+            for i in range(len(sizes)):
+                probs.append(sizes[i] ** alpha)
             probs = probs / np.sum(probs)
             for step in range(args.steps_per_epoch):
-                if (step+1)%1000 == 0:
+                if (step+1)%10 == 0:
                     print("Step " + str(step) + " of Epoch " + str(epoch))
                 task = np.random.choice(a=tasks, p=probs)
-                batch = next(task['dataloader'])
-                if task['task_name'] == "sentiment":
-                    b_ids, b_mask, b_labels = (batch['token_ids'],
-                                            batch['attention_mask'], batch['labels'])
-
-            for batch in tqdm(mixed_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
+                batch = next(task)
                 task_name, b_ids, b_mask, b_labels = batch['task_name'], batch['token_ids'], batch['attention_mask'], batch['labels']
                 b_ids, b_mask, b_labels = b_ids.to(device), b_mask.to(device), b_labels.to(device)
 
@@ -469,9 +468,12 @@ def get_args():
     parser.add_argument("--sts_dev_out", type=str, default="predictions/sts-dev-output.csv")
     parser.add_argument("--sts_test_out", type=str, default="predictions/sts-test-output.csv")
 
-    parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
+    parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=16)
+    parser.add_argument("--steps_per_epoch", type=int, default=3000)
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
+    parser.add_argument('--num_attention_heads', type=int, default=12)
+    parser.add_argument('--hidden_size_aug', type=int, default=204)
     parser.add_argument("--use_pals", action='store_true')
 
     args = parser.parse_args()
@@ -480,8 +482,8 @@ def get_args():
 
 if __name__ == "__main__":
     args = get_args()
-    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-multitask.pt' # Save path.
-    args.logpath = f'{args.option}-{args.epochs}-{args.lr}-multitask-log.txt' # path for saving training epochs
+    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-{args.steps_per_epoch}-scheduled-multitask.pt' # Save path.
+    args.logpath = f'{args.option}-{args.epochs}-{args.lr}-{args.steps_per_epoch}-scheduled-multitask-log.txt' # path for saving training epochs
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
     test_multitask(args)
