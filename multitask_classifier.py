@@ -292,8 +292,8 @@ def train_multitask(args):
                 probs.append(sizes[i] ** alpha)
             probs = probs / np.sum(probs)
             for step in range(args.steps_per_epoch):
-                if (step+1)%10 == 0:
-                    print("Step " + str(step) + " of Epoch " + str(epoch))
+                if (step+1)%10000 == 0:
+                    print("Step " + str(step+1) + " of Epoch " + str(epoch))
                 task_choice = np.random.choice(3, p=probs)
                 task_name, task_dataloader = tasks[task_choice]
                 batch = next(task_dataloader)
