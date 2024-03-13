@@ -270,7 +270,7 @@ def train_multitask(args):
     # para = {'task_name': "paraphrase", 'dataloader': para_train_dataloader, 'predictor': model.predict_paraphrase, 'loss_func': F.binary_cross_entropy_with_logits}
     # sts = {'task_name': "similarity", 'dataloader': sts_train_dataloader, 'predictor': model.predict_similarity, 'loss_func': F.mse_loss}
     # tasks = [sst, para, sts]
-    tasks = [cycle(iter(sst_train_dataloader)), cycle(iter(para_train_dataloader)), cycle(iter(sts_train_dataloader))]
+    tasks = [("sentiment", cycle(iter(sst_train_dataloader))), ("paraphrase", cycle(iter(para_train_dataloader))), ("similarity", cycle(iter(sts_train_dataloader)))]
     sizes = [len(sst_train_data), len(para_train_data), len(sts_train_data)]
 
     lr = args.lr
@@ -294,39 +294,40 @@ def train_multitask(args):
             for step in range(args.steps_per_epoch):
                 if (step+1)%10 == 0:
                     print("Step " + str(step) + " of Epoch " + str(epoch))
-                task = np.random.choice(a=tasks, p=probs)
-                batch = next(task)
-                task_name, b_ids, b_mask, b_labels = batch['task_name'], batch['token_ids'], batch['attention_mask'], batch['labels']
-                b_ids, b_mask, b_labels = b_ids.to(device), b_mask.to(device), b_labels.to(device)
-
-                optimizer.zero_grad()
-
-                # Get the bert representation ONCE
-                bert_output = model.bert(b_ids, attention_mask=b_mask)
-                pooled_output = bert_output["pooler_output"]
+                task_choice = np.random.choice(3, p=probs)
+                task_name, task_dataloader = tasks[task_choice]
+                batch = next(task_dataloader)
 
                 if task_name == "sentiment":
+                    b_ids, b_mask, b_labels = batch['token_ids'].to(device), batch['attention_mask'].to(device), batch['labels'].to(device)
+
+                    optimizer.zero_grad()
+
+                    # Get the bert representation ONCE
+                    bert_output = model.bert(b_ids, attention_mask=b_mask)
+                    pooled_output = bert_output["pooler_output"]
+
                     logits = model.predict_sentiment(b_ids, b_mask, pooled_output=pooled_output)
                     loss = F.cross_entropy(logits, b_labels, reduction='sum') / args.batch_size
                 
                 else:
-                    input_ids_1, attention_mask_1 = batch['input_ids_1'].to(device), batch['attention_mask_1'].to(device)
-                    input_ids_2, attention_mask_2 = batch['input_ids_2'].to(device), batch['attention_mask_2'].to(device)
+                    input_ids_1, attention_mask_1 = batch['token_ids_1'].to(device), batch['attention_mask_1'].to(device)
+                    input_ids_2, attention_mask_2 = batch['token_ids_2'].to(device), batch['attention_mask_2'].to(device)
+                    b_labels = batch['labels'].to(device)
 
                     pooled_output_1 = model.bert(input_ids_1, attention_mask=attention_mask_1)["pooler_output"]
                     pooled_output_2 = model.bert(input_ids_2, attention_mask=attention_mask_2)["pooler_output"]
 
-                    logits = model.predict_similarity(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
-                    loss = F.mse_loss(logits.view(-1), b_labels.float(), reduction='mean')
+                    if task_name == "paraphrase":
+                        logits = model.predict_paraphrase(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
+                        loss = F.binary_cross_entropy_with_logits(logits.view(-1), b_labels.float(), reduction='sum')
+                    elif task_name == "similarity":
+                        logits = model.predict_similarity(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
+                        loss = F.mse_loss(logits.view(-1), b_labels.float(), reduction='sum')
 
                 loss.backward()
                 optimizer.step()
 
-                train_loss += loss.item()
-                num_batches += 1
-                loss.backward()
-                optimizer.step()
-            
                 train_loss += loss.item()
                 num_batches += 1
 
