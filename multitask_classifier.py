@@ -73,6 +73,7 @@ class ProjectedAttentionLayer(nn.Module):
     def forward(self, hidden_states, attention_mask=None):
         # Project down
         hidden_states = self.encode(hidden_states)
+        # add non-linearity
         # Apply attention
         attn_output, _ = self.attention(hidden_states, hidden_states, hidden_states, key_padding_mask=attention_mask)
         # Project back up
@@ -113,7 +114,7 @@ class MultitaskBERT(nn.Module):
                 "similarity": ProjectedAttentionLayer(config)
             })
 
-    def forward(self, input_ids, attention_mask, task_name=None):
+    def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
         # The final BERT embedding is the hidden state of [CLS] token (the first token)
         # Here, you can start by just returning the embeddings straight from BERT.
@@ -124,9 +125,6 @@ class MultitaskBERT(nn.Module):
         # change to using contextual word embeddings of particular word pieces later
         outputs = self.bert(input_ids, attention_mask)
         pooled_output = outputs["pooler_output"]
-
-        if self.config.use_pals and task_name:
-            pooled_output = self.pal_layers[task_name](pooled_output)
 
         return pooled_output
  
@@ -139,10 +137,8 @@ class MultitaskBERT(nn.Module):
         ### TODO
         # If pooled_output needs to be computed (non PALs), compute it 
         if pooled_output is None:
-            outputs = self.forward(input_ids, attention_mask, task_name="sentiment")
-            pooled_output = outputs["pooler_output"]
-
-        if self.config.use_pals:
+            pooled_output = self.forward(input_ids, attention_mask)["pooler_output"]
+        else:
             pooled_output = self.pal_layers["sentiment"](pooled_output)
 
         logits = self.sentiment_classifier(pooled_output)
@@ -163,8 +159,7 @@ class MultitaskBERT(nn.Module):
             pooled_output_1 = self.forward(input_ids_1, attention_mask_1)["pooler_output"]
         if pooled_output_2 is None:
             pooled_output_2 = self.forward(input_ids_2, attention_mask_2)["pooler_output"]
-
-        if self.config.use_pals:
+        else:
             pooled_output_1 = self.pal_layers["paraphrase"](pooled_output_1)
             pooled_output_2 = self.pal_layers["paraphrase"](pooled_output_2)
 
@@ -186,8 +181,7 @@ class MultitaskBERT(nn.Module):
             pooled_output_1 = self.forward(input_ids_1, attention_mask_1)["pooler_output"]
         if pooled_output_2 is None:
             pooled_output_2 = self.forward(input_ids_2, attention_mask_2)["pooler_output"]
-
-        if self.config.use_pals:
+        else:
             pooled_output_1 = self.pal_layers["similarity"](pooled_output_1)
             pooled_output_2 = self.pal_layers["similarity"](pooled_output_2)
 
@@ -316,6 +310,7 @@ def train_multitask(args):
                     input_ids_2, attention_mask_2 = batch['token_ids_2'].to(device), batch['attention_mask_2'].to(device)
                     b_labels = batch['labels'].to(device)
                     
+                    # Get the bert representation ONCE
                     if args.use_pals:
                         pooled_output_1 = model.bert(input_ids_1, attention_mask=attention_mask_1)["pooler_output"]
                         pooled_output_2 = model.bert(input_ids_2, attention_mask=attention_mask_2)["pooler_output"]
