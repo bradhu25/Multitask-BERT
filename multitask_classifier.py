@@ -128,7 +128,7 @@ class MultitaskBERT(nn.Module):
         # change to using contextual word embeddings of particular word pieces later
         outputs = self.bert(input_ids, attention_mask)
         pooled_output = outputs["pooler_output"]
-        self.dropout(pooled_output)
+        pooled_output = self.dropout(pooled_output)
 
         return pooled_output
  
