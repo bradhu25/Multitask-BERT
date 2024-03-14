@@ -75,9 +75,32 @@ class BertSelfAttention(nn.Module):
     attn_value = self.attention(key_layer, query_layer, value_layer, attention_mask)
     return attn_value
 
+class TaskSpecificAttention(nn.Module):
+    def __init__(self, config, project_up=None, project_down=None, perform_initial_init=False):
+        super().__init__()
+        self.project_down = nn.Linear(config.hidden_size, config.low_rank_size) if project_down is None else project_down
+        self.project_up = nn.Linear(config.low_rank_size, config.hidden_size) if project_up is None else project_up
+        config_self_attention = copy.deepcopy(config)
+        config_self_attention.hidden_size = config.low_rank_size
+        self.attention = BertSelfAttention(config_self_attention, init_to_identity=perform_initial_init)
+
+        if perform_initial_init:
+            if project_down is None:
+                self.project_down.weight.data.zero_()
+                self.project_down.bias.data.zero_()
+            if project_up is None:
+                self.project_up.weight.data.zero_()
+                self.project_up.bias.data.zero_()
+
+    def forward(self, hidden_states, attention_mask):
+        low_rank_hidden_states = self.project_down(hidden_states)
+        low_rank_attention_mask = attention_mask
+        attn_value = self.attention(low_rank_hidden_states, low_rank_attention_mask)
+        attn_value = self.project_up(attn_value)
+        return attn_value
 
 class BertLayer(nn.Module):
-  def __init__(self, config):
+  def __init__(self, config, task_specific_attention=None):
     super().__init__()
     # Multi-head attention.
     self.self_attention = BertSelfAttention(config)
@@ -92,6 +115,9 @@ class BertLayer(nn.Module):
     self.out_dense = nn.Linear(config.intermediate_size, config.hidden_size)
     self.out_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
     self.out_dropout = nn.Dropout(config.hidden_dropout_prob)
+    
+    self.task_specific_attention = task_specific_attention
+
 
   def add_norm(self, input, output, dense_layer, dropout, ln_layer):
     """
@@ -109,7 +135,7 @@ class BertLayer(nn.Module):
 
     return ln_layer(input + output)
 
-  def forward(self, hidden_states, attention_mask):
+  def forward(self, hidden_states, attention_mask, task_id=None):
     """
     hidden_states: either from the embedding layer (first BERT layer) or from the previous BERT layer
     as shown in the left of Figure 1 of https://arxiv.org/pdf/1706.03762.pdf.
@@ -120,21 +146,32 @@ class BertLayer(nn.Module):
     4. An add-norm operation that takes the input and output of the feed forward layer.
     """
     ### TODO
-    attention = self.self_attention(hidden_states, attention_mask)
+    self_attention_output = self.self_attention(hidden_states, attention_mask)
 
-    add_norm = self.add_norm(hidden_states, 
-                             attention, 
+    # Task-specific attention, only applied if task_id is provided
+    if self.task_specific_attention is not None and task_id is not None:
+        task_attention_output = self.task_specific_attention[task_id](hidden_states, attention_mask)
+        # Combine outputs from self-attention and task-specific attention
+        attention_output = self_attention_output + task_attention_output
+    else:
+        attention_output = self_attention_output
+
+    attention_output = self.add_norm(hidden_states, 
+                             attention_output, 
                              self.attention_dense, 
                              self.attention_dropout, 
                              self.attention_layer_norm)
     
-    feed_forward = self.interm_af(self.interm_dense(add_norm))
+    
+    feed_forward = self.interm_af(self.interm_dense(attention_output))
 
-    return self.add_norm(add_norm,
+    output = self.add_norm(attention_output,
                          feed_forward,
                          self.out_dense, 
                          self.out_dropout, 
                          self.out_layer_norm)
+    
+    return output
 
 class BertModel(BertPreTrainedModel):
   """
@@ -193,7 +230,7 @@ class BertModel(BertPreTrainedModel):
 
     return self.embed_dropout(self.embed_layer_norm(embeds))
 
-  def encode(self, hidden_states, attention_mask):
+  def encode(self, hidden_states, attention_mask, task_id=None):
     """
     hidden_states: the output from the embedding layer [batch_size, seq_len, hidden_size]
     attention_mask: [batch_size, seq_len]
@@ -207,7 +244,7 @@ class BertModel(BertPreTrainedModel):
     # Pass the hidden states through the encoder layers.
     for i, layer_module in enumerate(self.bert_layers):
       # Feed the encoding from the last bert_layer to the next.
-      hidden_states = layer_module(hidden_states, extended_attention_mask)
+      hidden_states = layer_module(hidden_states, extended_attention_mask, task_id=task_id)
 
     return hidden_states
 
