@@ -164,6 +164,7 @@ class MultitaskBERT(nn.Module):
             pooled_output_1 = self.pal_layers["paraphrase"](pooled_output_1)
             pooled_output_2 = self.pal_layers["paraphrase"](pooled_output_2)
 
+        # combined_outputs = pooled_output_1 + pooled_output_2
         combined_outputs = torch.cat((pooled_output_1, pooled_output_2), dim=1)
         logits = self.paraphrase_classifier(combined_outputs)
         return logits
@@ -172,20 +173,19 @@ class MultitaskBERT(nn.Module):
     def predict_similarity(self,
                            input_ids_1, attention_mask_1,
                            input_ids_2, attention_mask_2,
-                           pooled_output_1=None, pooled_output_2=None):
+                           args):
         '''Given a batch of pairs of sentences, outputs a single logit corresponding to how similar they are.
         Note that your output should be unnormalized (a logit).
         '''
         ### TODO
         # If pooled_output needs to be computed (non PALs), compute it 
-        if pooled_output_1 is None:
-            pooled_output_1 = self.forward(input_ids_1, attention_mask_1)
-        if pooled_output_2 is None:
-            pooled_output_2 = self.forward(input_ids_2, attention_mask_2)
-        else:
+        pooled_output_1 = self.forward(input_ids_1, attention_mask_1)
+        pooled_output_2 = self.forward(input_ids_2, attention_mask_2)
+        if args.use_pals:
             pooled_output_1 = self.pal_layers["similarity"](pooled_output_1)
             pooled_output_2 = self.pal_layers["similarity"](pooled_output_2)
 
+        # combined_outputs = pooled_output_1 + pooled_output_2
         combined_outputs = torch.cat((pooled_output_1, pooled_output_2), dim=1)
         logits = self.similarity_classifier(combined_outputs)
         return logits
