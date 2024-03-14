@@ -187,8 +187,10 @@ class BertConfig(PretrainedConfig):
     self,
     vocab_size=30522,
     hidden_size=768,
+    hidden_size_aug=204,
     num_hidden_layers=12,
     num_attention_heads=12,
+    num_tasks = 3,
     intermediate_size=3072,
     hidden_act="gelu",
     hidden_dropout_prob=0.1,
@@ -207,8 +209,10 @@ class BertConfig(PretrainedConfig):
 
     self.vocab_size = vocab_size
     self.hidden_size = hidden_size
+    self.hidden_size_aug = hidden_size_aug
     self.num_hidden_layers = num_hidden_layers
     self.num_attention_heads = num_attention_heads
+    self.num_tasks = num_tasks
     self.hidden_act = hidden_act
     self.intermediate_size = intermediate_size
     self.hidden_dropout_prob = hidden_dropout_prob

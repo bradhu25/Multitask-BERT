@@ -78,29 +78,27 @@ class BertSelfAttention(nn.Module):
 class TaskSpecificAttention(nn.Module):
     def __init__(self, config, project_up=None, project_down=None, perform_initial_init=False):
         super().__init__()
-        self.project_down = nn.Linear(config.hidden_size, config.low_rank_size) if project_down is None else project_down
-        self.project_up = nn.Linear(config.low_rank_size, config.hidden_size) if project_up is None else project_up
+        self.project_down = nn.Linear(config.hidden_size, config.hidden_size_aug) if project_down is None else project_down
+        self.project_up = nn.Linear(config.hidden_size_aug, config.hidden_size) if project_up is None else project_up
+        
         config_self_attention = copy.deepcopy(config)
-        config_self_attention.hidden_size = config.low_rank_size
-        self.attention = BertSelfAttention(config_self_attention, init_to_identity=perform_initial_init)
+        config_self_attention.hidden_size = config.hidden_size_aug
+        self.attention = BertSelfAttention(config_self_attention)
 
         if perform_initial_init:
-            if project_down is None:
-                self.project_down.weight.data.zero_()
-                self.project_down.bias.data.zero_()
-            if project_up is None:
-                self.project_up.weight.data.zero_()
-                self.project_up.bias.data.zero_()
+            self.project_down.weight.data.zero_()
+            self.project_down.bias.data.zero_()
+            self.project_up.weight.data.zero_()
+            self.project_up.bias.data.zero_()
 
     def forward(self, hidden_states, attention_mask):
         low_rank_hidden_states = self.project_down(hidden_states)
-        low_rank_attention_mask = attention_mask
-        attn_value = self.attention(low_rank_hidden_states, low_rank_attention_mask)
+        attn_value = self.attention(low_rank_hidden_states, attention_mask)
         attn_value = self.project_up(attn_value)
         return attn_value
 
 class BertLayer(nn.Module):
-  def __init__(self, config, task_specific_attention=None):
+  def __init__(self, config, project_ups = None, project_downs = None):
     super().__init__()
     # Multi-head attention.
     self.self_attention = BertSelfAttention(config)
@@ -115,9 +113,16 @@ class BertLayer(nn.Module):
     self.out_dense = nn.Linear(config.intermediate_size, config.hidden_size)
     self.out_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
     self.out_dropout = nn.Dropout(config.hidden_dropout_prob)
-    
-    self.task_specific_attention = task_specific_attention
 
+    # Initialize task-specific attention modules only if num_tasks is specified
+    if config.num_tasks > 0:
+        print("HAS TS SELF ATTENTION!!!")
+        self.has_task_specific_attention = True
+        self.project_ups = nn.ModuleList([nn.Linear(config.hidden_size_aug, config.hidden_size) for _ in range(config.num_tasks)])
+        self.project_downs = nn.ModuleList([nn.Linear(config.hidden_size, config.hidden_size_aug) for _ in range(config.num_tasks)])
+        self.task_specific_attention = nn.ModuleList([TaskSpecificAttention(config, project_up=self.project_ups[i], project_down=self.project_downs[i]) for i in range(config.num_tasks)])
+    else:
+        self.has_task_specific_attention = False
 
   def add_norm(self, input, output, dense_layer, dropout, ln_layer):
     """
@@ -146,26 +151,23 @@ class BertLayer(nn.Module):
     4. An add-norm operation that takes the input and output of the feed forward layer.
     """
     ### TODO
-    self_attention_output = self.self_attention(hidden_states, attention_mask)
-
     # Task-specific attention, only applied if task_id is provided
-    if self.task_specific_attention is not None and task_id is not None:
-        task_attention_output = self.task_specific_attention[task_id](hidden_states, attention_mask)
-        # Combine outputs from self-attention and task-specific attention
-        attention_output = self_attention_output + task_attention_output
+    if self.has_task_specific_attention and task_id is not None:
+      task_attention_output = self.task_specific_attention[task_id](hidden_states, attention_mask)
+      hidden_states = hidden_states + task_attention_output
     else:
-        attention_output = self_attention_output
+      task_attention_output = self.self_attention(hidden_states, attention_mask)
 
     attention_output = self.add_norm(hidden_states, 
-                             attention_output, 
+                             task_attention_output, 
                              self.attention_dense, 
                              self.attention_dropout, 
                              self.attention_layer_norm)
     
     
-    feed_forward = self.interm_af(self.interm_dense(attention_output))
+    feed_forward = self.interm_af(self.interm_dense(task_attention_output))
 
-    output = self.add_norm(attention_output,
+    output = self.add_norm(task_attention_output,
                          feed_forward,
                          self.out_dense, 
                          self.out_dropout, 
@@ -197,8 +199,23 @@ class BertModel(BertPreTrainedModel):
     self.register_buffer('position_ids', position_ids)
 
     # BERT encoder.
-    self.bert_layers = nn.ModuleList([BertLayer(config) for _ in range(config.num_hidden_layers)])
-
+    if config.num_tasks > 0:
+            print("Task-specific attention enabled")
+            project_ups = nn.ModuleList([
+                nn.Linear(config.hidden_size_aug, config.hidden_size) for _ in range(config.num_tasks)
+            ])
+            project_downs = nn.ModuleList([
+                nn.Linear(config.hidden_size, config.hidden_size_aug) for _ in range(config.num_tasks)
+            ])
+            self.bert_layers = nn.ModuleList([
+                BertLayer(config, project_ups=project_ups, project_downs=project_downs) for _ in range(config.num_hidden_layers)
+            ])
+    else:
+        # Task-specific attention not enabled
+        self.bert_layers = nn.ModuleList([
+            BertLayer(config) for _ in range(config.num_hidden_layers)
+        ])
+    
     # [CLS] token transformations.
     self.pooler_dense = nn.Linear(config.hidden_size, config.hidden_size)
     self.pooler_af = nn.Tanh()
@@ -248,7 +265,7 @@ class BertModel(BertPreTrainedModel):
 
     return hidden_states
 
-  def forward(self, input_ids, attention_mask):
+  def forward(self, input_ids, attention_mask, task_id=None):
     """
     input_ids: [batch_size, seq_len], seq_len is the max length of the batch
     attention_mask: same size as input_ids, 1 represents non-padding tokens, 0 represents padding tokens
@@ -257,7 +274,7 @@ class BertModel(BertPreTrainedModel):
     embedding_output = self.embed(input_ids=input_ids)
 
     # Feed to a transformer (a stack of BertLayers).
-    sequence_output = self.encode(embedding_output, attention_mask=attention_mask)
+    sequence_output = self.encode(embedding_output, attention_mask=attention_mask, task_id=task_id)
 
     # Get cls token hidden state.
     first_tk = sequence_output[:, 0]
