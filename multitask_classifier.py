@@ -11,7 +11,6 @@ Of note are:
 Running `python multitask_classifier.py` trains and tests your MultitaskBERT and
 writes all required submission files.
 '''
-
 import random, numpy as np, argparse
 from types import SimpleNamespace
 
@@ -53,7 +52,7 @@ class MultitaskBERTConfig(SimpleNamespace):
                  hidden_dropout_prob=0.1, 
                  hidden_size_aug=204,
                  num_attention_heads = 12,
-                 use_pals=False, 
+                 use_pals=False,
                  **kwargs):
         super().__init__(hidden_size=hidden_size, 
                          hidden_dropout_prob=hidden_dropout_prob, 
@@ -73,11 +72,15 @@ class ProjectedAttentionLayer(nn.Module):
     def forward(self, hidden_states, attention_mask=None):
         # Project down
         hidden_states = self.encode(hidden_states)
-        # add non-linearity
+        hidden_states = F.gelu(hidden_states)  # Apply GELU non-linearity
+        
         # Apply attention
         attn_output, _ = self.attention(hidden_states, hidden_states, hidden_states, key_padding_mask=attention_mask)
+        
         # Project back up
         hidden_states = self.decode(attn_output)
+        hidden_states = F.gelu(hidden_states)  # Apply GELU non-linearity
+
         return hidden_states
 
 class MultitaskBERT(nn.Module):
@@ -125,10 +128,11 @@ class MultitaskBERT(nn.Module):
         # change to using contextual word embeddings of particular word pieces later
         outputs = self.bert(input_ids, attention_mask)
         pooled_output = outputs["pooler_output"]
+        self.dropout(pooled_output)
 
         return pooled_output
  
-    def predict_sentiment(self, input_ids, attention_mask, pooled_output=None):
+    def predict_sentiment(self, input_ids, attention_mask, args):
         '''Given a batch of sentences, outputs logits for classifying sentiment.
         There are 5 sentiment classes:
         (0 - negative, 1- somewhat negative, 2- neutral, 3- somewhat positive, 4- positive)
@@ -136,9 +140,8 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         # If pooled_output needs to be computed (non PALs), compute it 
-        if pooled_output is None:
-            pooled_output = self.forward(input_ids, attention_mask)["pooler_output"]
-        else:
+        pooled_output = self.forward(input_ids, attention_mask)["pooler_output"]
+        if args.use_pals:
             pooled_output = self.pal_layers["sentiment"](pooled_output)
 
         logits = self.sentiment_classifier(pooled_output)
@@ -148,18 +151,16 @@ class MultitaskBERT(nn.Module):
     def predict_paraphrase(self,
                            input_ids_1, attention_mask_1,
                            input_ids_2, attention_mask_2,
-                           pooled_output_1=None, pooled_output_2=None):
+                           args):
         '''Given a batch of pairs of sentences, outputs a single logit for predicting whether they are paraphrases.
         Note that your output should be unnormalized (a logit); it will be passed to the sigmoid function
         during evaluation.
         '''
         ### TODO
         # If pooled_output needs to be computed (non PALs), compute it 
-        if pooled_output_1 is None:
-            pooled_output_1 = self.forward(input_ids_1, attention_mask_1)["pooler_output"]
-        if pooled_output_2 is None:
-            pooled_output_2 = self.forward(input_ids_2, attention_mask_2)["pooler_output"]
-        else:
+        pooled_output_1 = self.forward(input_ids_1, attention_mask_1)["pooler_output"]
+        pooled_output_2 = self.forward(input_ids_2, attention_mask_2)["pooler_output"]
+        if args.use_pals:
             pooled_output_1 = self.pal_layers["paraphrase"](pooled_output_1)
             pooled_output_2 = self.pal_layers["paraphrase"](pooled_output_2)
 
@@ -297,29 +298,21 @@ def train_multitask(args):
 
                     optimizer.zero_grad()
 
-                    # Get the bert representation ONCE
-                    if args.use_pals:
-                        bert_output = model.bert(b_ids, attention_mask=b_mask)
-                        pooled_output = bert_output["pooler_output"]
-
-                    logits = model.predict_sentiment(b_ids, b_mask, pooled_output=pooled_output)
+                    logits = model.predict_sentiment(b_ids, b_mask, args)
                     loss = F.cross_entropy(logits, b_labels, reduction='sum') / args.batch_size
                 
                 else:
                     input_ids_1, attention_mask_1 = batch['token_ids_1'].to(device), batch['attention_mask_1'].to(device)
                     input_ids_2, attention_mask_2 = batch['token_ids_2'].to(device), batch['attention_mask_2'].to(device)
                     b_labels = batch['labels'].to(device)
-                    
-                    # Get the bert representation ONCE
-                    if args.use_pals:
-                        pooled_output_1 = model.bert(input_ids_1, attention_mask=attention_mask_1)["pooler_output"]
-                        pooled_output_2 = model.bert(input_ids_2, attention_mask=attention_mask_2)["pooler_output"]
+
+                    optimizer.zero_grad()
 
                     if task_name == "paraphrase":
-                        logits = model.predict_paraphrase(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
+                        logits = model.predict_paraphrase(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2, args)
                         loss = F.binary_cross_entropy_with_logits(logits.view(-1), b_labels.float(), reduction='sum')
                     elif task_name == "similarity":
-                        logits = model.predict_similarity(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
+                        logits = model.predict_similarity(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2, args)
                         loss = F.mse_loss(logits.view(-1), b_labels.float(), reduction='sum')
 
                 loss.backward()
@@ -330,8 +323,8 @@ def train_multitask(args):
 
             train_loss = train_loss / (num_batches)
 
-            sent_train_acc, sst_train_y_pred, sst_train_sent_ids, para_train_acc, para_train_y_pred, para_train_sent_ids, sts_train_corr, sts_train_y_pred, sts_train_sent_ids = model_eval_multitask(sst_train_dataloader, para_train_dataloader, sts_train_dataloader, model, device, args.use_pals)
-            sent_dev_acc, sst_dev_y_pred, sst_dev_sent_ids, para_dev_acc, para_dev_y_pred, para_dev_sent_ids,sts_dev_corr, sts_dev_y_pred, sts_dev_sent_ids = model_eval_multitask(sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device, args.use_pals)
+            sent_train_acc, sst_train_y_pred, sst_train_sent_ids, para_train_acc, para_train_y_pred, para_train_sent_ids, sts_train_corr, sts_train_y_pred, sts_train_sent_ids = model_eval_multitask(sst_train_dataloader, para_train_dataloader, sts_train_dataloader, model, device, args)
+            sent_dev_acc, sst_dev_y_pred, sst_dev_sent_ids, para_dev_acc, para_dev_y_pred, para_dev_sent_ids,sts_dev_corr, sts_dev_y_pred, sts_dev_sent_ids = model_eval_multitask(sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device, args)
 
             if sent_dev_acc > best_dev_acc:
                 best_dev_acc = sent_dev_acc
@@ -394,13 +387,13 @@ def test_multitask(args):
             dev_paraphrase_accuracy, dev_para_y_pred, dev_para_sent_ids, \
             dev_sts_corr, dev_sts_y_pred, dev_sts_sent_ids = model_eval_multitask(sst_dev_dataloader,
                                                                     para_dev_dataloader,
-                                                                    sts_dev_dataloader, model, device)
+                                                                    sts_dev_dataloader, model, device, args)
 
         test_sst_y_pred, \
             test_sst_sent_ids, test_para_y_pred, test_para_sent_ids, test_sts_y_pred, test_sts_sent_ids = \
                 model_eval_test_multitask(sst_test_dataloader,
                                           para_test_dataloader,
-                                          sts_test_dataloader, model, device)
+                                          sts_test_dataloader, model, device, args)
 
         with open(args.sst_dev_out, "w+") as f:
             print(f"dev sentiment acc :: {dev_sentiment_accuracy :.3f}")

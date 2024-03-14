@@ -11,13 +11,13 @@ import torch
 from sklearn.metrics import f1_score, accuracy_score
 from tqdm import tqdm
 import numpy as np
-
+import argparse
 
 TQDM_DISABLE = False
 
 
 # Evaluate multitask model on SST only.
-def model_eval_sst(dataloader, model, device):
+def model_eval_sst(dataloader, model, device, args):
     model.eval()  # Switch to eval model, will turn off randomness like dropout.
     y_true = []
     y_pred = []
@@ -30,7 +30,7 @@ def model_eval_sst(dataloader, model, device):
         b_ids = b_ids.to(device)
         b_mask = b_mask.to(device)
 
-        logits = model.predict_sentiment(b_ids, b_mask)
+        logits = model.predict_sentiment(b_ids, b_mask, args)
         logits = logits.detach().cpu().numpy()
         preds = np.argmax(logits, axis=1).flatten()
 
@@ -50,7 +50,7 @@ def model_eval_sst(dataloader, model, device):
 def model_eval_multitask(sentiment_dataloader,
                          paraphrase_dataloader,
                          sts_dataloader,
-                         model, device, use_pals=False):
+                         model, device, args):
     model.eval()  # Switch to eval model, will turn off randomness like dropout.
 
     with torch.no_grad():
@@ -64,10 +64,7 @@ def model_eval_multitask(sentiment_dataloader,
             b_ids = b_ids.to(device)
             b_mask = b_mask.to(device)
 
-            if use_pals:
-                bert_output = model.bert(b_ids, attention_mask=b_mask)
-                pooled_output = bert_output["pooler_output"]
-            logits = model.predict_sentiment(b_ids, b_mask, pooled_output=pooled_output)
+            logits = model.predict_sentiment(b_ids, b_mask, args)
             y_hat = logits.argmax(dim=-1).flatten().cpu().numpy()
             b_labels = b_labels.flatten().cpu().numpy()
 
@@ -93,11 +90,7 @@ def model_eval_multitask(sentiment_dataloader,
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
 
-            if use_pals:
-                pooled_output_1 = model.bert(b_ids1, attention_mask=b_mask1)["pooler_output"]
-                pooled_output_2 = model.bert(b_ids2, attention_mask=b_mask2)["pooler_output"]
-
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
+            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2, args)
             y_hat = logits.sigmoid().round().flatten().cpu().numpy()
             b_labels = b_labels.flatten().cpu().numpy()
 
@@ -123,11 +116,7 @@ def model_eval_multitask(sentiment_dataloader,
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
 
-            if use_pals:
-                pooled_output_1 = model.bert(b_ids1, attention_mask=b_mask1)["pooler_output"]
-                pooled_output_2 = model.bert(b_ids2, attention_mask=b_mask2)["pooler_output"]
-
-            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2, pooled_output_1=pooled_output_1, pooled_output_2=pooled_output_2)
+            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2, args)
             y_hat = logits.flatten().cpu().numpy()
             b_labels = b_labels.flatten().cpu().numpy()
 
@@ -150,7 +139,7 @@ def model_eval_multitask(sentiment_dataloader,
 def model_eval_test_multitask(sentiment_dataloader,
                          paraphrase_dataloader,
                          sts_dataloader,
-                         model, device):
+                         model, device, args):
     model.eval()  # Switch to eval model, will turn off randomness like dropout.
 
     with torch.no_grad():
@@ -163,7 +152,7 @@ def model_eval_test_multitask(sentiment_dataloader,
             b_ids = b_ids.to(device)
             b_mask = b_mask.to(device)
 
-            logits = model.predict_sentiment(b_ids, b_mask)
+            logits = model.predict_sentiment(b_ids, b_mask, args)
             y_hat = logits.argmax(dim=-1).flatten().cpu().numpy()
 
             sst_y_pred.extend(y_hat)
@@ -184,7 +173,7 @@ def model_eval_test_multitask(sentiment_dataloader,
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
 
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
+            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2, args)
             y_hat = logits.sigmoid().round().flatten().cpu().numpy()
 
             para_y_pred.extend(y_hat)
@@ -205,7 +194,7 @@ def model_eval_test_multitask(sentiment_dataloader,
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
 
-            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
+            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2, args)
             y_hat = logits.flatten().cpu().numpy()
 
             sts_y_pred.extend(y_hat)
@@ -214,3 +203,4 @@ def model_eval_test_multitask(sentiment_dataloader,
         return (sst_y_pred, sst_sent_ids,
                 para_y_pred, para_sent_ids,
                 sts_y_pred, sts_sent_ids)
+
