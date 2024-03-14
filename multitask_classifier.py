@@ -272,11 +272,16 @@ def train_multitask(args):
             sent_train_acc, sst_train_y_pred, sst_train_sent_ids, para_train_acc, para_train_y_pred, para_train_sent_ids, sts_train_corr, sts_train_y_pred, sts_train_sent_ids = model_eval_multitask(sst_train_dataloader, para_train_dataloader, sts_train_dataloader, model, device)
             sent_dev_acc, sst_dev_y_pred, sst_dev_sent_ids, para_dev_acc, para_dev_y_pred, para_dev_sent_ids,sts_dev_corr, sts_dev_y_pred, sts_dev_sent_ids = model_eval_multitask(sst_dev_dataloader, para_dev_dataloader, sts_dev_dataloader, model, device)
 
-            if sent_dev_acc > best_dev_acc:
-                best_dev_acc = sent_dev_acc
-                save_model(model, optimizer, args, config, args.filepath)
+            sts_train_corr_normalized = (sts_train_corr + 1) / 2
+            avg_train_acc = (sent_train_acc + para_train_acc + sts_train_corr_normalized) / 3
 
-            output_message = f"Epoch {epoch}: train loss :: {train_loss :.3f}, sentiment train acc :: {sent_train_acc :.3f}, sentiment dev acc :: {sent_dev_acc :.3f}, para train acc :: {para_train_acc :.3f}, para dev acc :: {para_dev_acc :.3f}, sts train corr :: {sts_train_corr :.3f}, sts dev corr :: {sts_dev_corr :.3f}"
+            sts_dev_corr_normalized = (sts_dev_corr + 1) / 2
+            avg_dev_acc = (sent_dev_acc + para_dev_acc + sts_dev_corr_normalized) / 3
+
+            if avg_dev_acc > best_dev_acc:
+                best_dev_acc = avg_dev_acc
+
+            output_message = f"Epoch {epoch}: train loss :: {train_loss :.3f}, sentiment train acc :: {sent_train_acc :.3f}, sentiment dev acc :: {sent_dev_acc :.3f}, para train acc :: {para_train_acc :.3f}, para dev acc :: {para_dev_acc :.3f}, sts train corr :: {sts_train_corr :.3f}, sts dev corr :: {sts_dev_corr :.3f}, avg train acc :: {avg_train_acc :.3f}, avg dev acc :: {avg_dev_acc :.3f}"
             print(output_message)
             file.write(output_message + "\n")
 
