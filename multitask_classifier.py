@@ -140,7 +140,7 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         # If pooled_output needs to be computed (non PALs), compute it 
-        pooled_output = self.forward(input_ids, attention_mask)["pooler_output"]
+        pooled_output = self.forward(input_ids, attention_mask)
         if args.use_pals:
             pooled_output = self.pal_layers["sentiment"](pooled_output)
 
@@ -158,8 +158,8 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         # If pooled_output needs to be computed (non PALs), compute it 
-        pooled_output_1 = self.forward(input_ids_1, attention_mask_1)["pooler_output"]
-        pooled_output_2 = self.forward(input_ids_2, attention_mask_2)["pooler_output"]
+        pooled_output_1 = self.forward(input_ids_1, attention_mask_1)
+        pooled_output_2 = self.forward(input_ids_2, attention_mask_2)
         if args.use_pals:
             pooled_output_1 = self.pal_layers["paraphrase"](pooled_output_1)
             pooled_output_2 = self.pal_layers["paraphrase"](pooled_output_2)
@@ -179,9 +179,9 @@ class MultitaskBERT(nn.Module):
         ### TODO
         # If pooled_output needs to be computed (non PALs), compute it 
         if pooled_output_1 is None:
-            pooled_output_1 = self.forward(input_ids_1, attention_mask_1)["pooler_output"]
+            pooled_output_1 = self.forward(input_ids_1, attention_mask_1)
         if pooled_output_2 is None:
-            pooled_output_2 = self.forward(input_ids_2, attention_mask_2)["pooler_output"]
+            pooled_output_2 = self.forward(input_ids_2, attention_mask_2)
         else:
             pooled_output_1 = self.pal_layers["similarity"](pooled_output_1)
             pooled_output_2 = self.pal_layers["similarity"](pooled_output_2)
