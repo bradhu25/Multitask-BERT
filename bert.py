@@ -116,7 +116,7 @@ class BertLayer(nn.Module):
 
     # Initialize task-specific attention modules only if num_tasks is specified
     if config.num_tasks > 0:
-        print("HAS TS SELF ATTENTION!!!")
+        # print("HAS TS SELF ATTENTION!!!")
         self.has_task_specific_attention = True
         self.project_ups = nn.ModuleList([nn.Linear(config.hidden_size_aug, config.hidden_size) for _ in range(config.num_tasks)])
         self.project_downs = nn.ModuleList([nn.Linear(config.hidden_size, config.hidden_size_aug) for _ in range(config.num_tasks)])
@@ -152,22 +152,22 @@ class BertLayer(nn.Module):
     """
     ### TODO
     # Task-specific attention, only applied if task_id is provided
+    self_attention = self.self_attention(hidden_states, attention_mask)
     if self.has_task_specific_attention and task_id is not None:
       task_attention_output = self.task_specific_attention[task_id](hidden_states, attention_mask)
+      self_attention += task_attention_output
       hidden_states = hidden_states + task_attention_output
-    else:
-      task_attention_output = self.self_attention(hidden_states, attention_mask)
 
     attention_output = self.add_norm(hidden_states, 
-                             task_attention_output, 
+                             self_attention, 
                              self.attention_dense, 
                              self.attention_dropout, 
                              self.attention_layer_norm)
     
     
-    feed_forward = self.interm_af(self.interm_dense(task_attention_output))
+    feed_forward = self.interm_af(self.interm_dense(attention_output))
 
-    output = self.add_norm(task_attention_output,
+    output = self.add_norm(attention_output,
                          feed_forward,
                          self.out_dense, 
                          self.out_dropout, 
@@ -199,22 +199,7 @@ class BertModel(BertPreTrainedModel):
     self.register_buffer('position_ids', position_ids)
 
     # BERT encoder.
-    if config.num_tasks > 0:
-            print("Task-specific attention enabled")
-            project_ups = nn.ModuleList([
-                nn.Linear(config.hidden_size_aug, config.hidden_size) for _ in range(config.num_tasks)
-            ])
-            project_downs = nn.ModuleList([
-                nn.Linear(config.hidden_size, config.hidden_size_aug) for _ in range(config.num_tasks)
-            ])
-            self.bert_layers = nn.ModuleList([
-                BertLayer(config, project_ups=project_ups, project_downs=project_downs) for _ in range(config.num_hidden_layers)
-            ])
-    else:
-        # Task-specific attention not enabled
-        self.bert_layers = nn.ModuleList([
-            BertLayer(config) for _ in range(config.num_hidden_layers)
-        ])
+    self.bert_layers = nn.ModuleList([BertLayer(config) for _ in range(config.num_hidden_layers)])
     
     # [CLS] token transformations.
     self.pooler_dense = nn.Linear(config.hidden_size, config.hidden_size)
