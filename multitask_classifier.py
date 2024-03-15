@@ -468,8 +468,8 @@ def get_args():
 
 if __name__ == "__main__":
     args = get_args()
-    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-{args.steps_per_epoch}-pals-multitask.pt' # Save path.
-    args.logpath = f'{args.option}-{args.epochs}-{args.lr}-{args.steps_per_epoch}-pals-multitask-log.txt' # path for saving training epochs
+    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-{args.steps_per_epoch}-pals-parallel.pt' # Save path.
+    args.logpath = f'{args.option}-{args.epochs}-{args.lr}-{args.steps_per_epoch}-pals-parallel-log.txt' # path for saving training epochs
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
     test_multitask(args)
