@@ -117,7 +117,7 @@ class MultitaskBERT(nn.Module):
                 "similarity": ProjectedAttentionLayer(config)
             })
 
-    def forward(self, input_ids, attention_mask):
+    def forward(self, input_ids, attention_mask, task_id):
         'Takes a batch of sentences and produces embeddings for them.'
         # The final BERT embedding is the hidden state of [CLS] token (the first token)
         # Here, you can start by just returning the embeddings straight from BERT.
@@ -126,7 +126,7 @@ class MultitaskBERT(nn.Module):
 
         ### TODO
         # change to using contextual word embeddings of particular word pieces later
-        outputs = self.bert(input_ids, attention_mask)
+        outputs = self.bert(input_ids, attention_mask, task_id)
         pooled_output = outputs["pooler_output"]
         pooled_output = self.dropout(pooled_output)
 
@@ -139,8 +139,7 @@ class MultitaskBERT(nn.Module):
         Thus, your output should contain 5 logits for each sentence.
         '''
         ### TODO
-        # If pooled_output needs to be computed (non PALs), compute it 
-        pooled_output = self.forward(input_ids, attention_mask)
+        pooled_output = self.forward(input_ids, attention_mask, task_id=0)
         if args.use_pals:
             pooled_output = self.pal_layers["sentiment"](pooled_output)
 
@@ -157,14 +156,12 @@ class MultitaskBERT(nn.Module):
         during evaluation.
         '''
         ### TODO
-        # If pooled_output needs to be computed (non PALs), compute it 
-        pooled_output_1 = self.forward(input_ids_1, attention_mask_1)
-        pooled_output_2 = self.forward(input_ids_2, attention_mask_2)
+        pooled_output_1 = self.forward(input_ids_1, attention_mask_1, task_id=1)
+        pooled_output_2 = self.forward(input_ids_2, attention_mask_2, task_id=1)
         if args.use_pals:
             pooled_output_1 = self.pal_layers["paraphrase"](pooled_output_1)
             pooled_output_2 = self.pal_layers["paraphrase"](pooled_output_2)
-
-        # combined_outputs = pooled_output_1 + pooled_output_2
+            
         combined_outputs = torch.cat((pooled_output_1, pooled_output_2), dim=1)
         logits = self.paraphrase_classifier(combined_outputs)
         return logits
@@ -178,14 +175,12 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit).
         '''
         ### TODO
-        # If pooled_output needs to be computed (non PALs), compute it 
-        pooled_output_1 = self.forward(input_ids_1, attention_mask_1)
-        pooled_output_2 = self.forward(input_ids_2, attention_mask_2)
+        pooled_output_1 = self.forward(input_ids_1, attention_mask_1, task_id=2)
+        pooled_output_2 = self.forward(input_ids_2, attention_mask_2, task_id=2)
         if args.use_pals:
             pooled_output_1 = self.pal_layers["similarity"](pooled_output_1)
             pooled_output_2 = self.pal_layers["similarity"](pooled_output_2)
 
-        # combined_outputs = pooled_output_1 + pooled_output_2
         combined_outputs = torch.cat((pooled_output_1, pooled_output_2), dim=1)
         logits = self.similarity_classifier(combined_outputs)
         return logits
@@ -256,15 +251,7 @@ def train_multitask(args):
         data_dir='.',
         option=args.option
     )
-
     model = MultitaskBERT(config).to(device)
-
-    # maybe alternate loss func?
-    
-    # sst = {'task_name': "sentiment", 'dataloader': sst_train_dataloader, 'predictor': model.predict_sentiment, 'loss_func': F.cross_entropy}
-    # para = {'task_name': "paraphrase", 'dataloader': para_train_dataloader, 'predictor': model.predict_paraphrase, 'loss_func': F.binary_cross_entropy_with_logits}
-    # sts = {'task_name': "similarity", 'dataloader': sts_train_dataloader, 'predictor': model.predict_similarity, 'loss_func': F.mse_loss}
-    # tasks = [sst, para, sts]
     tasks = [("sentiment", cycle(iter(sst_train_dataloader))), ("paraphrase", cycle(iter(para_train_dataloader))), ("similarity", cycle(iter(sts_train_dataloader)))]
     sizes = [len(sst_train_data), len(para_train_data), len(sts_train_data)]
 
@@ -479,8 +466,8 @@ def get_args():
 
 if __name__ == "__main__":
     args = get_args()
-    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-{args.steps_per_epoch}-pals-multitask.pt' # Save path.
-    args.logpath = f'{args.option}-{args.epochs}-{args.lr}-{args.steps_per_epoch}-pals-multitask-log.txt' # path for saving training epochs
+    args.filepath = f'{args.option}-{args.epochs}-{args.lr}-{args.steps_per_epoch}-pals-parallel.pt' # Save path.
+    args.logpath = f'{args.option}-{args.epochs}-{args.lr}-{args.steps_per_epoch}-pals-parallel-log.txt' # path for saving training epochs
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train_multitask(args)
     test_multitask(args)
