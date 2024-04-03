@@ -1,0 +1,18 @@
+Before Epochs: 03_15_2024 06:02:37
+Epoch 0: train loss :: 0.692, sentiment train acc :: 0.456, sentiment dev acc :: 0.432, para train acc :: 0.749, para dev acc :: 0.734, sts train corr :: 0.340, sts dev corr :: 0.274, avg train acc :: 0.625, avg dev acc :: 0.601
+Epoch 1: train loss :: 0.634, sentiment train acc :: 0.512, sentiment dev acc :: 0.470, para train acc :: 0.780, para dev acc :: 0.756, sts train corr :: 0.439, sts dev corr :: 0.337, avg train acc :: 0.671, avg dev acc :: 0.632
+Epoch 2: train loss :: 0.630, sentiment train acc :: 0.552, sentiment dev acc :: 0.484, para train acc :: 0.790, para dev acc :: 0.758, sts train corr :: 0.523, sts dev corr :: 0.362, avg train acc :: 0.701, avg dev acc :: 0.641
+Epoch 3: train loss :: 0.594, sentiment train acc :: 0.601, sentiment dev acc :: 0.480, para train acc :: 0.807, para dev acc :: 0.760, sts train corr :: 0.614, sts dev corr :: 0.358, avg train acc :: 0.739, avg dev acc :: 0.639
+Epoch 4: train loss :: 0.565, sentiment train acc :: 0.726, sentiment dev acc :: 0.518, para train acc :: 0.833, para dev acc :: 0.769, sts train corr :: 0.738, sts dev corr :: 0.383, avg train acc :: 0.809, avg dev acc :: 0.659
+Epoch 5: train loss :: 0.524, sentiment train acc :: 0.794, sentiment dev acc :: 0.526, para train acc :: 0.842, para dev acc :: 0.780, sts train corr :: 0.786, sts dev corr :: 0.326, avg train acc :: 0.843, avg dev acc :: 0.656
+Epoch 6: train loss :: 0.490, sentiment train acc :: 0.831, sentiment dev acc :: 0.506, para train acc :: 0.865, para dev acc :: 0.783, sts train corr :: 0.860, sts dev corr :: 0.389, avg train acc :: 0.876, avg dev acc :: 0.661
+Epoch 7: train loss :: 0.409, sentiment train acc :: 0.820, sentiment dev acc :: 0.477, para train acc :: 0.871, para dev acc :: 0.761, sts train corr :: 0.900, sts dev corr :: 0.366, avg train acc :: 0.880, avg dev acc :: 0.640
+Epoch 8: train loss :: 0.363, sentiment train acc :: 0.909, sentiment dev acc :: 0.487, para train acc :: 0.890, para dev acc :: 0.778, sts train corr :: 0.927, sts dev corr :: 0.383, avg train acc :: 0.921, avg dev acc :: 0.652
+Epoch 9: train loss :: 0.326, sentiment train acc :: 0.948, sentiment dev acc :: 0.498, para train acc :: 0.899, para dev acc :: 0.783, sts train corr :: 0.940, sts dev corr :: 0.389, avg train acc :: 0.939, avg dev acc :: 0.658
+Epoch 10: train loss :: 0.295, sentiment train acc :: 0.963, sentiment dev acc :: 0.503, para train acc :: 0.911, para dev acc :: 0.783, sts train corr :: 0.952, sts dev corr :: 0.389, avg train acc :: 0.950, avg dev acc :: 0.660
+Epoch 11: train loss :: 0.253, sentiment train acc :: 0.978, sentiment dev acc :: 0.500, para train acc :: 0.915, para dev acc :: 0.782, sts train corr :: 0.953, sts dev corr :: 0.384, avg train acc :: 0.957, avg dev acc :: 0.658
+Epoch 12: train loss :: 0.218, sentiment train acc :: 0.972, sentiment dev acc :: 0.499, para train acc :: 0.911, para dev acc :: 0.753, sts train corr :: 0.969, sts dev corr :: 0.401, avg train acc :: 0.956, avg dev acc :: 0.651
+Epoch 13: train loss :: 0.194, sentiment train acc :: 0.993, sentiment dev acc :: 0.500, para train acc :: 0.925, para dev acc :: 0.780, sts train corr :: 0.968, sts dev corr :: 0.389, avg train acc :: 0.967, avg dev acc :: 0.658
+Epoch 14: train loss :: 0.178, sentiment train acc :: 0.991, sentiment dev acc :: 0.504, para train acc :: 0.925, para dev acc :: 0.775, sts train corr :: 0.976, sts dev corr :: 0.388, avg train acc :: 0.968, avg dev acc :: 0.658
+After Epochs: 03_15_2024 12:55:02
+Training Time: 6:52:25
