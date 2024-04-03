@@ -161,7 +161,7 @@ class MultitaskBERT(nn.Module):
         if args.use_pals:
             pooled_output_1 = self.pal_layers["paraphrase"](pooled_output_1)
             pooled_output_2 = self.pal_layers["paraphrase"](pooled_output_2)
-
+            
         combined_outputs = torch.cat((pooled_output_1, pooled_output_2), dim=1)
         logits = self.paraphrase_classifier(combined_outputs)
         return logits
@@ -251,9 +251,7 @@ def train_multitask(args):
         data_dir='.',
         option=args.option
     )
-
     model = MultitaskBERT(config).to(device)
-
     tasks = [("sentiment", cycle(iter(sst_train_dataloader))), ("paraphrase", cycle(iter(para_train_dataloader))), ("similarity", cycle(iter(sts_train_dataloader)))]
     sizes = [len(sst_train_data), len(para_train_data), len(sts_train_data)]
 
